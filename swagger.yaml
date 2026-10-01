@@ -1,0 +1,247 @@
+openapi: 3.0.3
+info:
+  title: BNI Request Encryptor API
+  version: 1.0.0
+  description: REST wrapper for BNI request body encryption and decryption.
+servers:
+  - url: /
+paths:
+  /api/v1/encrypt:
+    post:
+      summary: Encrypt a JSON request payload
+      description: Returns a BNI-compatible encrypted value. The resulting value is valid for 8 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncryptRequest'
+      responses:
+        '200':
+          description: Payload encrypted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [encrypted]
+                properties:
+                  encrypted:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+  /api/v1/decrypt:
+    post:
+      summary: Decrypt a BNI encrypted value
+      description: Decrypts a value that has not expired and returns its payload as a string.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecryptRequest'
+      responses:
+        '200':
+          description: Payload decrypted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payload]
+                properties:
+                  payload:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+  /healthz:
+    get:
+      summary: Check service health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+components:
+  schemas:
+    EncryptRequest:
+      type: object
+      required: [client_id, secret_key, payload]
+      additionalProperties: false
+      properties:
+        client_id:
+          type: string
+          minLength: 1
+          maxLength: 5
+        secret_key:
+          type: string
+          format: password
+          pattern: '^[A-Fa-f0-9]{32}$'
+        payload:
+          oneOf:
+            - $ref: '#/components/schemas/CreateBillingPayload'
+            - $ref: '#/components/schemas/UpdateBillingPayload'
+            - $ref: '#/components/schemas/InquiryBillingPayload'
+          discriminator:
+            propertyName: type
+            mapping:
+              createbilling: '#/components/schemas/CreateBillingPayload'
+              createbillingsms: '#/components/schemas/CreateBillingPayload'
+              updatebilling: '#/components/schemas/UpdateBillingPayload'
+              inquirybilling: '#/components/schemas/InquiryBillingPayload'
+    DecryptRequest:
+      type: object
+      required: [client_id, secret_key, encrypted]
+      additionalProperties: false
+      properties:
+        client_id:
+          type: string
+          minLength: 1
+          maxLength: 5
+        secret_key:
+          type: string
+          format: password
+          pattern: '^[A-Fa-f0-9]{32}$'
+        encrypted:
+          type: string
+          minLength: 1
+    CreateBillingPayload:
+      type: object
+      additionalProperties: false
+      required: [type, client_id, trx_id, trx_amount, billing_type, customer_name]
+      properties:
+        type:
+          type: string
+          enum: [createbilling, createbillingsms]
+        client_id:
+          type: string
+          minLength: 1
+          maxLength: 5
+          description: Must match the top-level client_id.
+        trx_id:
+          type: string
+          minLength: 1
+          maxLength: 30
+        trx_amount:
+          type: string
+          pattern: '^[0-9]{1,14}$'
+          description: Integer amount without decimal or thousands separators. For createbilling with billing_type o, it must be 0.
+        billing_type:
+          type: string
+          enum: [o, c, i, m, n, x]
+          description: For createbillingsms, this must be c (fixed payment).
+        customer_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        customer_email:
+          type: string
+          format: email
+          maxLength: 255
+        customer_phone:
+          type: string
+          maxLength: 15
+          pattern: '^(\+62[0-9]+|0[0-9]+)$'
+        virtual_account:
+          type: string
+          pattern: '^[0-9]{16}$'
+        datetime_expired:
+          type: string
+          format: date-time
+        description:
+          type: string
+    UpdateBillingPayload:
+      type: object
+      additionalProperties: false
+      required: [type, client_id, trx_id, trx_amount, billing_type, customer_name]
+      properties:
+        type:
+          type: string
+          enum: [updatebilling]
+        client_id:
+          type: string
+          minLength: 1
+          maxLength: 5
+          description: Must match the top-level client_id.
+        trx_id:
+          type: string
+          minLength: 1
+          maxLength: 30
+          description: Must identify an existing billing and cannot be changed.
+        trx_amount:
+          type: string
+          pattern: '^[0-9]{1,14}$'
+          description: Integer amount without decimal or thousands separators.
+        billing_type:
+          type: string
+          enum: [o, c, i, m, n, x]
+          description: Must match the existing billing and cannot be changed.
+        customer_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        customer_email:
+          type: string
+          format: email
+          maxLength: 255
+        customer_phone:
+          type: string
+          maxLength: 15
+          pattern: '^(\+62[0-9]+|0[0-9]+)$'
+        virtual_account:
+          type: string
+          pattern: '^[0-9]{16}$'
+          description: If supplied, must match the existing billing.
+        datetime_expired:
+          type: string
+          format: date-time
+        description:
+          type: string
+    InquiryBillingPayload:
+      type: object
+      additionalProperties: false
+      required: [type, client_id, trx_id]
+      properties:
+        type:
+          type: string
+          enum: [inquirybilling]
+        client_id:
+          type: string
+          minLength: 1
+          maxLength: 5
+          description: Must match the top-level client_id.
+        trx_id:
+          type: string
+          minLength: 1
+          maxLength: 30
+  responses:
+    BadRequest:
+      description: Malformed request, invalid BNI payload or credentials, decryption failure, or expired value
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: string
+    MethodNotAllowed:
+      description: HTTP method is not supported for this path
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: string
